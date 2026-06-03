@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2D Texture Gallery — все текстуры</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+h1 { color: #e94560; font-size: 24px; margin-bottom: 12px; }
+
+#search { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; justify-content: center; }
+#search input { background: #16213e; color: #eee; border: 1px solid #0f3460; border-radius: 8px; padding: 8px 14px; font-size: 14px; outline: none; width: 200px; }
+#search input::placeholder { color: #555; }
+#search input:focus { border-color: #e94560; }
+#search button { background: #e94560; color: #fff; border: none; border-radius: 8px; padding: 8px 20px; font-size: 14px; cursor: pointer; }
+#search button:hover { background: #d63851; }
+
+nav { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 8px; }
+nav button { background: #16213e; color: #a8a8b3; border: 1px solid #0f3460; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; transition: all 0.2s; }
+nav button:hover { background: #0f3460; color: #fff; }
+nav button.active { background: #e94560; color: #fff; border-color: #e94560; }
+.info { color: #888; font-size: 13px; margin-bottom: 10px; }
+canvas { border-radius: 12px; background: #16213e; box-shadow: 0 4px 20px rgba(0,0,0,0.4); display: block; max-width: 100%; cursor: pointer; }
+#detail { display: none; background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 20px; margin-top: 16px; width: 100%; max-width: 860px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+#detail.show { display: block; }
+#detail h3 { color: #e94560; margin-bottom: 12px; font-size: 18px; }
+#detail .row { display: flex; gap: 8px; margin-bottom: 5px; font-size: 14px; }
+#detail .label { color: #888; min-width: 110px; flex-shrink: 0; }
+#detail .value { color: #eee; word-break: break-all; }
+#detail pre { background: #0d1117; border-radius: 8px; padding: 14px; margin-top: 10px; overflow-x: auto; font-size: 13px; color: #c9d1d9; }
+#detail .cm { color: #8b949e; }
+#detail .str { color: #a5d6ff; }
+#detail .k { color: #ff7b72; }
+#detail .f { color: #d2a8ff; }
+#detail .n { color: #79c0ff; }
+</style>
+</head>
+<body>
+<h1>2D Texture Gallery</h1>
+
+<div id="search">
+  <input id="searchInput" placeholder='например: "Player 5" или "Tiles 3"' autofocus>
+  <button onclick="doSearch()">Найти</button>
+</div>
+
+<nav id="nav"></nav>
+<div class="info" id="info"></div>
+<canvas id="canvas"></canvas>
+<div id="detail"></div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const nav = document.getElementById('nav');
+const info = document.getElementById('info');
+const detail = document.getElementById('detail');
+const CELL_PAD = 8;
+const COLS = 4;
+
+const sections = [
+  { name: 'Root (4)', folder: '../assets/', images: ['demo-img-1.png','demo-img-2.png','demo-img-3.png','demo-img-4.png'] },
+  { name: 'Background (10)', folder: '../assets/Background/', images: ['Background1.png','Background2.png','Background3.png','Background4.png','Background5.png','Background6.png','Background6-Sheet.png','Background7.png','Background8.png','Background9.png'] },
+  { name: 'Money (1)', folder: '../assets/Money/', images: ['coin1_16x16.png'] },
+  { name: 'Player (16)', folder: '../assets/Player/', images: ['StyleBird1/AllBird1.png','StyleBird1/Bird1-1.png','StyleBird1/Bird1-2.png','StyleBird1/Bird1-3.png','StyleBird1/Bird1-4.png','StyleBird1/Bird1-5.png','StyleBird1/Bird1-6.png','StyleBird1/Bird1-7.png','StyleBird2/AllBird2.png','StyleBird2/Bird2-1.png','StyleBird2/Bird2-2.png','StyleBird2/Bird2-3.png','StyleBird2/Bird2-4.png','StyleBird2/Bird2-5.png','StyleBird2/Bird2-6.png','StyleBird2/Bird2-7.png'] },
+  { name: 'Tiles (15)', folder: '../assets/Tiles/', images: ['Style 1/SimpleStyle1.png','Style 1/TileStyle1.png','Style 1/PipeStyle1.png','Style 2/SimpleStyle2.png','Style 2/TileStyle2.png','Style 2/PipeStyle2.png','Style 3/SimpleStyle3.png','Style 3/TileStyle3.png','Style 3/PipeStyle3.png','Style 4/SimpleStyle4.png','Style 4/TileStyle4.png','Style 4/PipeStyle4.png','Style 5/SimpleStyle5.png','Style 5/TileStyle5.png','Style 5/PipeStyle5.png'] }
+];
+
+function encPath(p) { return p.split('/').map(s => encodeURIComponent(s)).join('/'); }
+
+let current = 0;
+let loadedImgs = [];
+
+const packMap = {
+  root: 0, 'root (4)': 0,
+  background: 1, 'background (10)': 1, bg: 1,
+  money: 2, 'money (1)': 2, coin: 2,
+  player: 3, 'player (16)': 3, bird: 3,
+  tiles: 4, 'tiles (15)': 4, tile: 4
+};
+
+sections.forEach((s, i) => {
+  const btn = document.createElement('button');
+  const short = s.name.replace(/ \(\d+\)/, '');
+  btn.textContent = short;
+  btn.title = s.name;
+  btn.onclick = () => selectSection(i);
+  nav.appendChild(btn);
+});
+
+function selectSection(i) {
+  current = i;
+  nav.querySelectorAll('button').forEach((b, j) => b.classList.toggle('active', j === i));
+  const s = sections[i];
+  info.textContent = 'кликни на текстуру для инструкции';
+  detail.classList.remove('show');
+  render();
+}
+
+function getW() { return Math.min(window.innerWidth - 32, 1200); }
+
+function render() {
+  const s = sections[current];
+  const w = getW();
+  const cw = (w - CELL_PAD*(COLS+1))/COLS;
+  const ch = cw + 28;
+  const rows = Math.ceil(s.images.length/COLS);
+  canvas.width = w;
+  canvas.height = rows*ch + CELL_PAD*(rows+1);
+  ctx.clearRect(0,0,w,canvas.height);
+  ctx.fillStyle = '#16213e';
+  ctx.fillRect(0,0,w,canvas.height);
+
+  loadedImgs = [];
+  let loaded = 0;
+  let called = false;
+
+  function tryDraw() {
+    if (called) return;
+    called = true;
+    loadedImgs.forEach((img, i) => {
+      const col = i % COLS, row = Math.floor(i/COLS);
+      const x = CELL_PAD + col*(cw+CELL_PAD), y = CELL_PAD + row*(ch+CELL_PAD);
+      ctx.fillStyle = '#1a1a3e';
+      ctx.beginPath();
+      ctx.roundRect(x, y, cw, ch, 6);
+      ctx.fill();
+      ctx.fillStyle = '#e94560';
+      ctx.beginPath();
+      ctx.arc(x+22, y+22, 14, 0, Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(i+1, x+22, y+22);
+      const ia = cw-16, ih = ch-28-16;
+      if (img) {
+        const sc = Math.min(ia/img.width, ih/img.height, 2);
+        ctx.drawImage(img, x+(cw-img.width*sc)/2, y+40+(ih-img.height*sc)/2, img.width*sc, img.height*sc);
+      }
+      ctx.fillStyle = '#a8a8b3';
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(s.images[i].split('/').pop(), x+cw/2, y+ch-6);
+    });
+  }
+
+  s.images.forEach((path, i) => {
+    const img = new Image();
+    let done = false;
+    function onDone() {
+      if (done) return;
+      done = true;
+      loadedImgs[i] = (img.complete && img.naturalWidth > 0) ? img : null;
+      if (!loadedImgs[i]) console.warn('Не загрузилась:', path);
+      loaded++;
+      if (loaded === s.images.length) tryDraw();
+    }
+    img.onload = onDone;
+    img.onerror = onDone;
+    img.src = s.folder + encPath(path);
+    if (img.complete) onDone();
+  });
+}
+
+canvas.onclick = function(e) {
+  const rect = canvas.getBoundingClientRect();
+  const sx = canvas.width / rect.width;
+  const sy = canvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  const s = sections[current];
+  const w = canvas.width;
+  const cw = (w - CELL_PAD*(COLS+1))/COLS;
+  const ch = cw + 28;
+  const col = Math.floor(mx / (cw + CELL_PAD));
+  const row = Math.floor(my / (ch + CELL_PAD));
+  const idx = row * COLS + col;
+  if (idx >= 0 && idx < s.images.length) showDetail(idx);
+};
+
+function showDetail(idx) {
+  const s = sections[current];
+  const path = s.images[idx];
+  const img = loadedImgs[idx];
+  const num = idx + 1;
+  const fullPath = s.folder + path;
+  const folderName = s.name.replace(/ \(\d+\)/, '');
+  const size = img ? img.width + '×' + img.height : '?×?';
+
+  var h = '<h3>#' + num + ' ' + path.split('/').pop() + '</h3>' +
+    '<div class="row"><span class="label">Номер</span><span class="value">' + num + '</span></div>' +
+    '<div class="row"><span class="label">Пак</span><span class="value">' + folderName + '</span></div>' +
+    '<div class="row"><span class="label">Файл</span><span class="value">' + path.split('/').pop() + '</span></div>' +
+    '<div class="row"><span class="label">Размер</span><span class="value">' + size + '</span></div>' +
+    '<div class="row"><span class="label">Путь</span><span class="value">' + fullPath + '</span></div>';
+
+  h += '<pre>' +
+    '<span class="cm">// 1. Загрузи текстуру в игру (один раз при старте):</span>\n' +
+    'const ' + folderName.toLowerCase() + num + ' = new Image();\n' +
+    folderName.toLowerCase() + num + ".src = '<span class='str'>" + fullPath + "</span>';";
+
+  if (folderName === 'Background') {
+    h += '\n\n' +
+      '<span class="cm">// 2. Отрисуй фон на весь canvas:</span>\n' +
+      'ctx.drawImage(' + folderName.toLowerCase() + num + ', 0, 0, canvas.width, canvas.height);';
+  } else if (folderName === 'Player') {
+    h += '\n\n' +
+      '<span class="cm">// 2. Отрисуй птицу в позиции (playerX, playerY):</span>\n' +
+      'ctx.drawImage(' + folderName.toLowerCase() + num + ', playerX, playerY' + (img ? ', ' + img.width + ', ' + img.height : '') + ');';
+  } else if (folderName === 'Money') {
+    h += '\n\n' +
+      '<span class="cm">// 2. Отрисуй монету в позиции (coinX, coinY):</span>\n' +
+      'ctx.drawImage(' + folderName.toLowerCase() + num + ', coinX, coinY' + (img ? ', ' + img.width + ', ' + img.height : '') + ');';
+  } else if (folderName === 'Tiles') {
+    h += '\n\n' +
+      '<span class="cm">// 2. Отрисуй тайл (трубу/землю/декор):</span>\n' +
+      'ctx.drawImage(' + folderName.toLowerCase() + num + ', x, y' + (img ? ', ' + img.width + ', ' + img.height : '') + ');';
+  } else {
+    h += '\n\n' +
+      '<span class="cm">// 2. Отрисуй на canvas:</span>\n' +
+      'ctx.drawImage(' + folderName.toLowerCase() + num + ', x, y' + (img ? ', ' + img.width + ', ' + img.height : '') + ');';
+  }
+
+  h += '\n\n' +
+    '<span class="cm">// 3. Масштабирование (растянуть/сжать):</span>\n' +
+    'ctx.drawImage(' + folderName.toLowerCase() + num + ', x, y, желаемая_ширина, желаемая_высота);' +
+    '</pre>';
+
+  detail.className = 'show';
+  detail.innerHTML = h;
+}
+
+function doSearch() {
+  var q = document.getElementById('searchInput').value.trim().toLowerCase();
+  if (!q) return;
+
+  var parts = q.split(/\s+/);
+  var pack = parts[0];
+  var num = parts.length > 1 ? parseInt(parts[1], 10) : NaN;
+  var sectionIdx = packMap[pack];
+
+  if (sectionIdx === undefined) {
+    for (var k in packMap) {
+      if (k.startsWith(pack)) { sectionIdx = packMap[k]; break; }
+    }
+  }
+
+  if (sectionIdx === undefined) {
+    info.textContent = 'Пак "' + parts[0] + '" не найден. Доступны: Root, Background, Money, Player, Tiles';
+    return;
+  }
+
+  selectSection(sectionIdx);
+  var s = sections[sectionIdx];
+
+  if (isNaN(num) || num < 1 || num > s.images.length) {
+    info.textContent = 'В паке "' + s.name.replace(/ \(\d+\)/, '') + '" ' + s.images.length + ' текстур (1-' + s.images.length + '). Укажи номер.';
+    return;
+  }
+
+  var idx = num - 1;
+  var s2 = sections[current];
+  var cw2 = (canvas.width - CELL_PAD*(COLS+1))/COLS;
+  var ch2 = cw2 + 28;
+  var col2 = idx % COLS;
+  var row2 = Math.floor(idx / COLS);
+  var x2 = CELL_PAD + col2*(cw2+CELL_PAD) + cw2/2;
+  var y2 = CELL_PAD + row2*(ch2+CELL_PAD) + ch2/2;
+
+  showDetail(idx);
+  info.textContent = s.name.replace(/ \(\d+\)/, '') + ' #' + num + ' — ' + s.images[idx].split('/').pop();
+}
+
+document.getElementById('searchInput').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doSearch();
+});
+
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    if (r > w/2) r = w/2; if (r > h/2) r = h/2;
+    this.moveTo(x+r, y); this.lineTo(x+w-r, y);
+    this.quadraticCurveTo(x+w, y, x+w, y+r);
+    this.lineTo(x+w, y+h-r); this.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+    this.lineTo(x+r, y+h); this.quadraticCurveTo(x, y+h, x, y+h-r);
+    this.lineTo(x, y+r); this.quadraticCurveTo(x, y, x+r, y);
+    return this;
+  };
+}
+
+window.addEventListener('resize', render);
+selectSection(0);
+</script>
+</body>
+</html>

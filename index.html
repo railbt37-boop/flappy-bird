@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Bird</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #1a1a2e;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            background: #4dc9f6;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const GAME_W = 720;
+        const GAME_H = 450;
+
+        function resize() {
+            const ratio = GAME_W / GAME_H;
+            let w = window.innerWidth;
+            let h = w / ratio;
+            if (h > window.innerHeight) {
+                h = window.innerHeight;
+                w = h * ratio;
+            }
+            canvas.style.width = w + 'px';
+            canvas.style.height = h + 'px';
+            canvas.width = GAME_W;
+            canvas.height = GAME_H;
+        }
+
+        const jumpSound = new Audio('assets/Audio/flap.mp3');
+        const passSound = new Audio('assets/Audio/Звук перехода между трубами.mp3');
+
+        const player = {
+            x: 80,
+            y: 200,
+            size: 30,
+            velY: 0
+        };
+
+        const GRAVITY = 0.4;
+        const JUMP_FORCE = -7;
+
+        const PIPE_W = 75;
+        const PIPE_GAP = 150;
+        const PIPE_SPEED = 2.5;
+
+        let pipes = [];
+        let coins = [];
+        let frame = 0;
+        let coinTimer = 0;
+        let pipeTimer = 0;
+        let gameOver = false;
+        let totalCoins = 0;
+        let pipesPassed = 0;
+        let speedMult = 1;
+
+        function jump() {
+            if (gameOver) return reset();
+            player.velY = JUMP_FORCE;
+            jumpSound.currentTime = 0;
+            jumpSound.play();
+        }
+
+        function reset() {
+            pipes = [];
+            coins = [];
+            frame = 0;
+            coinTimer = 0;
+            gameOver = false;
+            pipesPassed = 0;
+            player.y = 200;
+            player.velY = 0;
+        }
+
+        function rectCollide(ax, ay, aw, ah, bx, by, bw, bh) {
+            return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+        }
+
+        function spawnPair() {
+            const minTop = 40;
+            const maxTop = GAME_H - PIPE_GAP - 40;
+            const topH = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
+            const bottomY = topH + PIPE_GAP;
+
+            pipes.push({ x: GAME_W, topH, bottomY, scored: false });
+        }
+
+        function getSafeCoinY() {
+            const margin = 40;
+            const forbidden = [];
+            for (const p of pipes) {
+                forbidden.push([0, p.topH + margin]);
+                forbidden.push([p.bottomY - margin, GAME_H]);
+            }
+
+            const safe = [[0, GAME_H]];
+            for (const [fMin, fMax] of forbidden) {
+                for (let i = safe.length - 1; i >= 0; i--) {
+                    const [sMin, sMax] = safe[i];
+                    if (fMax <= sMin || fMin >= sMax) continue;
+                    if (fMin <= sMin && fMax >= sMax) { safe.splice(i, 1); continue; }
+                    if (fMin > sMin && fMax < sMax) {
+                        safe.splice(i, 1, [sMin, fMin], [fMax, sMax]);
+                        continue;
+                    }
+                    if (fMin <= sMin) { safe[i] = [fMax, sMax]; continue; }
+                    if (fMax >= sMax) { safe[i] = [sMin, fMin]; continue; }
+                }
+            }
+
+            const valid = safe.filter(([a, b]) => b - a > 20);
+            if (valid.length === 0) return null;
+            const zone = valid[Math.floor(Math.random() * valid.length)];
+            return zone[0] + Math.random() * (zone[1] - zone[0]);
+        }
+
+        function spawnCoin() {
+            const y = getSafeCoinY();
+            if (y !== null) {
+                coins.push({ x: GAME_W, y, r: 10, collected: false });
+            }
+        }
+
+        function update() {
+            if (gameOver) return;
+
+            frame++;
+
+            speedMult = 1 + 1.0 * Math.min(frame / 18000, 1);
+
+            // spawn pipes (variable spacing)
+            pipeTimer--;
+            if (pipeTimer <= 0 && frame > 30) {
+                spawnPair();
+                pipeTimer = Math.round((40 + Math.floor(Math.random() * 220)) / speedMult);
+                if (Math.random() < 0.4) pipeTimer = Math.round((60 + Math.floor(Math.random() * 40)) / speedMult);
+            }
+
+            // spawn coins independently
+            coinTimer--;
+            if (coinTimer <= 0) {
+                spawnCoin();
+                coinTimer = Math.round((60 + Math.floor(Math.random() * 90)) / speedMult);
+            }
+
+            // move pipes
+            for (let i = pipes.length - 1; i >= 0; i--) {
+                pipes[i].x -= PIPE_SPEED * speedMult;
+                if (pipes[i].x + PIPE_W < 0) pipes.splice(i, 1);
+            }
+
+            // move coins
+            for (let i = coins.length - 1; i >= 0; i--) {
+                if (coins[i].collected) { coins.splice(i, 1); continue; }
+                coins[i].x -= PIPE_SPEED * speedMult;
+                if (coins[i].x + coins[i].r < 0) coins.splice(i, 1);
+            }
+
+            // physics
+            player.velY += GRAVITY;
+            player.y += player.velY;
+            if (player.y > GAME_H - player.size) {
+                player.y = GAME_H - player.size;
+                player.velY = 0;
+            }
+            if (player.y < 0) {
+                player.y = 0;
+                player.velY = 0;
+            }
+
+            // pipe collision & pass sound
+            for (const p of pipes) {
+                if (!p.scored && p.x + PIPE_W < player.x) {
+                    p.scored = true;
+                    pipesPassed++;
+                }
+                if (rectCollide(player.x, player.y, player.size, player.size, p.x, 0, PIPE_W, p.topH) ||
+                    rectCollide(player.x, player.y, player.size, player.size, p.x, p.bottomY, PIPE_W, GAME_H - p.bottomY)) {
+                    gameOver = true;
+                }
+            }
+
+            // coin collection
+            for (const coin of coins) {
+                const dx = (player.x + player.size / 2) - coin.x;
+                const dy = (player.y + player.size / 2) - coin.y;
+                if (Math.hypot(dx, dy) < player.size / 2 + coin.r) {
+                    coin.collected = true;
+                    totalCoins++;
+                }
+            }
+        }
+
+        function draw() {
+            update();
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // pipes
+            ctx.fillStyle = '#8B00FF';
+            for (const p of pipes) {
+                ctx.fillRect(p.x, 0, PIPE_W, p.topH);
+                ctx.fillRect(p.x, p.bottomY, PIPE_W, GAME_H - p.bottomY);
+            }
+
+            // coins
+            ctx.fillStyle = '#FFD700';
+            for (const c of coins) {
+                if (!c.collected) {
+                    ctx.beginPath();
+                    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
+            // HUD
+            ctx.textAlign = 'right';
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 26px Arial';
+            ctx.fillText(totalCoins, GAME_W - 50, 36);
+            ctx.fillStyle = 'blue';
+            ctx.fillRect(GAME_W - 40, 16, 24, 24);
+            ctx.font = '12px Arial';
+            ctx.fillText(pipesPassed, GAME_W - 10, 56);
+            ctx.fillText((PIPE_SPEED * speedMult).toFixed(1), GAME_W - 10, 70);
+
+            // player
+            ctx.fillStyle = 'red';
+            ctx.fillRect(player.x, player.y, player.size, player.size);
+
+            if (gameOver) {
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.fillRect(0, 0, GAME_W, GAME_H);
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 48px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('GAME OVER', GAME_W / 2, GAME_H / 2 - 10);
+                ctx.font = '20px Arial';
+                ctx.fillText('Click or Space to restart', GAME_W / 2, GAME_H / 2 + 40);
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                jump();
+            }
+        });
+        canvas.addEventListener('click', jump);
+
+        window.addEventListener('resize', resize);
+        resize();
+        draw();
+    </script>
+</body>
+</html>

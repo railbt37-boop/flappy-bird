@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TileStyle1 — обрезка + разбивка</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+h1 { color: #e94560; font-size: 24px; margin-bottom: 4px; }
+.subtitle { color: #888; font-size: 14px; margin-bottom: 14px; }
+
+.controls { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; margin-bottom: 12px; }
+.controls label { color: #a8a8b3; font-size: 13px; display: flex; align-items: center; gap: 4px; }
+.controls input { background: #16213e; color: #eee; border: 1px solid #0f3460; border-radius: 6px; padding: 5px 8px; font-size: 13px; width: 60px; text-align: center; outline: none; }
+.controls input:focus { border-color: #e94560; }
+.controls button { background: #e94560; color: #fff; border: none; border-radius: 6px; padding: 6px 16px; font-size: 13px; cursor: pointer; }
+.controls button:hover { background: #d63851; }
+.controls .info { color: #888; font-size: 13px; }
+
+.crop-box { background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; align-items: center; }
+.crop-box h3 { color: #a8a8b3; font-size: 13px; }
+
+.preview { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; }
+.orig { background: #16213e; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #0f3460; }
+.orig h3 { color: #a8a8b3; font-size: 14px; margin-bottom: 8px; }
+.orig .img-wrap { position: relative; display: inline-block; }
+.orig canvas { image-rendering: pixelated; display: block; cursor: crosshair; }
+.crop-overlay { position: absolute; border: 2px solid #e94560; background: rgba(233,69,96,0.12); pointer-events: none; z-index: 2; }
+.crop-info { position: absolute; bottom: 4px; left: 4px; background: rgba(0,0,0,0.7); color: #fff; font-size: 11px; padding: 2px 6px; border-radius: 4px; pointer-events: none; z-index: 3; display: none; font-family: monospace; }
+
+.slices { background: #16213e; border-radius: 12px; padding: 16px; border: 1px solid #0f3460; max-width: 100%; overflow-x: auto; }
+.slices h3 { color: #a8a8b3; font-size: 14px; margin-bottom: 8px; }
+.grid { display: inline-grid; gap: 2px; justify-items: center; }
+.slice-item { text-align: center; display: inline-block; }
+.slice-item canvas { image-rendering: pixelated; border-radius: 2px; border: 1px solid #0f3460; display: block; }
+.slice-item .num { background: #e94560; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; }
+code { background: #0d1117; border-radius: 12px; padding: 20px; display: block; max-width: 800px; width: 100%; font-size: 13px; color: #c9d1d9; margin-top: 16px; white-space: pre-wrap; }
+code .cm { color: #8b949e; }
+code .str { color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>TileStyle1 — обрезка + разбивка</h1>
+<div class="subtitle">Оригинал 400×112 px. Тяни мышкой по картинке чтобы обрезать.</div>
+
+<div class="crop-box">
+  <h3>Обрезка</h3>
+  <label>X <input id="cx" type="number" min="0" value="0" step="any"></label>
+  <label>Y <input id="cy" type="number" min="0" value="0" step="any"></label>
+  <label>W <input id="cw" type="number" min="1" value="400" step="any"></label>
+  <label>H <input id="ch" type="number" min="1" value="112" step="any"></label>
+  <button onclick="resetCrop()">Сброс</button>
+</div>
+
+<div class="controls">
+  <label>Колонки <input id="colsInput" type="number" step="any" min="0.1" value="21"></label>
+  <label>Строки <input id="rowsInput" type="number" step="any" min="0.1" value="5"></label>
+  <button onclick="split()">Разбить</button>
+  <span class="info" id="totalInfo"></span>
+</div>
+
+<div class="preview">
+  <div class="orig">
+    <h3>Оригинал (тяни мышкой)</h3>
+    <div class="img-wrap">
+      <canvas id="origCanvas" width="400" height="112" style="width:300px"></canvas>
+      <div class="crop-overlay" id="cropOverlay"></div>
+      <div class="crop-info" id="cropInfo"></div>
+    </div>
+  </div>
+  <div class="slices">
+    <h3>Части</h3>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<pre><code id="codeBlock">
+</code></pre>
+
+<script>
+const img = new Image();
+img.src = '../assets/Tiles/Style 1/TileStyle1.png';
+
+let dragStart = null;
+let dragEnd = null;
+let isDragging = false;
+
+function getCrop() {
+  const sx = parseFloat(document.getElementById('cx').value) || 0;
+  const sy = parseFloat(document.getElementById('cy').value) || 0;
+  const sw = parseFloat(document.getElementById('cw').value) || img.width;
+  const sh = parseFloat(document.getElementById('ch').value) || img.height;
+  return { sx, sy, sw, sh };
+}
+
+function setCrop(sx, sy, sw, sh) {
+  document.getElementById('cx').value = Math.round(sx);
+  document.getElementById('cy').value = Math.round(sy);
+  document.getElementById('cw').value = Math.round(sw);
+  document.getElementById('ch').value = Math.round(sh);
+}
+
+function resetCrop() {
+  setCrop(0, 0, img.width, img.height);
+  dragStart = null;
+  dragEnd = null;
+  updateOverlay();
+  split();
+}
+
+function updateOverlay() {
+  const { sx, sy, sw, sh } = getCrop();
+  const overlay = document.getElementById('cropOverlay');
+  const info = document.getElementById('cropInfo');
+  const origCanvas = document.getElementById('origCanvas');
+  const rect = origCanvas.getBoundingClientRect();
+  const scaleX = rect.width / origCanvas.width;
+  const scaleY = rect.height / origCanvas.height;
+  const isFull = sx <= 0 && sy <= 0 && sw >= img.width && sh >= img.height;
+
+  if (isFull) {
+    overlay.style.display = 'none';
+    info.style.display = 'none';
+    return;
+  }
+
+  overlay.style.display = 'block';
+  overlay.style.left = (sx * scaleX) + 'px';
+  overlay.style.top = (sy * scaleY) + 'px';
+  overlay.style.width = (sw * scaleX) + 'px';
+  overlay.style.height = (sh * scaleY) + 'px';
+
+  info.style.display = 'block';
+  info.textContent = sx.toFixed(0) + ',' + sy.toFixed(0) + ' ' + sw.toFixed(0) + '×' + sh.toFixed(0);
+}
+
+function getCanvasCoords(e) {
+  const canvas = document.getElementById('origCanvas');
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+document.getElementById('origCanvas').addEventListener('mousedown', function(e) {
+  const pos = getCanvasCoords(e);
+  dragStart = pos;
+  dragEnd = pos;
+  isDragging = true;
+
+  const overlay = document.getElementById('cropOverlay');
+  overlay.style.display = 'block';
+  document.getElementById('cropInfo').style.display = 'block';
+});
+
+document.addEventListener('mousemove', function(e) {
+  if (!isDragging) return;
+  const canvas = document.getElementById('origCanvas');
+  const rect = canvas.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) return;
+
+  const pos = getCanvasCoords(e);
+  dragEnd = pos;
+
+  const x1 = Math.min(dragStart.x, dragEnd.x);
+  const y1 = Math.min(dragStart.y, dragEnd.y);
+  const x2 = Math.max(dragStart.x, dragEnd.x);
+  const y2 = Math.max(dragStart.y, dragEnd.y);
+
+  const overlay = document.getElementById('cropOverlay');
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+
+  overlay.style.left = (x1 / scaleX) + 'px';
+  overlay.style.top = (y1 / scaleY) + 'px';
+  overlay.style.width = ((x2 - x1) / scaleX) + 'px';
+  overlay.style.height = ((y2 - y1) / scaleY) + 'px';
+
+  document.getElementById('cropInfo').textContent =
+    Math.round(x1) + ',' + Math.round(y1) + ' ' + Math.round(x2 - x1) + '×' + Math.round(y2 - y1);
+});
+
+document.addEventListener('mouseup', function(e) {
+  if (!isDragging) return;
+  isDragging = false;
+
+  if (dragStart && dragEnd) {
+    const x1 = Math.min(dragStart.x, dragEnd.x);
+    const y1 = Math.min(dragStart.y, dragEnd.y);
+    const x2 = Math.max(dragStart.x, dragEnd.x);
+    const y2 = Math.max(dragStart.y, dragEnd.y);
+    const w = x2 - x1;
+    const h = y2 - y1;
+
+    if (w > 2 && h > 2) {
+      setCrop(x1, y1, w, h);
+      split();
+    } else {
+      resetCrop();
+    }
+  }
+
+  dragStart = null;
+  dragEnd = null;
+});
+
+function split() {
+  const { sx, sy, sw, sh } = getCrop();
+  const colsF = parseFloat(document.getElementById('colsInput').value) || 1;
+  const rowsF = parseFloat(document.getElementById('rowsInput').value) || 1;
+
+  const TW = sw / colsF;
+  const TH = sh / rowsF;
+
+  const nCols = Math.ceil(colsF);
+  const nRows = Math.ceil(rowsF);
+  const total = nCols * nRows;
+
+  const isFull = sx <= 0 && sy <= 0 && sw >= img.width && sh >= img.height;
+  document.getElementById('totalInfo').textContent =
+    (isFull ? '' : 'Обрезка ' + sx.toFixed(0) + ',' + sy.toFixed(0) + ' ' + sw.toFixed(0) + '×' + sh.toFixed(0) + ' → ') +
+    total + ' частей, каждая ' + TW.toFixed(2) + '×' + TH.toFixed(2) + ' px';
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  grid.style.gridTemplateColumns = 'repeat(' + nCols + ', auto)';
+
+  for (let row = 0; row < nRows; row++) {
+    for (let col = 0; col < nCols; col++) {
+      const num = row * nCols + col + 1;
+      const tsx = Math.round(sx + col * TW);
+      const tsy = Math.round(sy + row * TH);
+      const tsw = Math.round(Math.min(TW, (sx + sw) - tsx));
+      const tsh = Math.round(Math.min(TH, (sy + sh) - tsy));
+
+      const div = document.createElement('div');
+      div.className = 'slice-item';
+
+      const numDiv = document.createElement('div');
+      numDiv.className = 'num';
+      numDiv.textContent = num;
+      div.appendChild(numDiv);
+
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, tsw);
+      c.height = Math.max(1, tsh);
+      const cx = c.getContext('2d');
+      cx.drawImage(img, tsx, tsy, tsw, tsh, 0, 0, tsw, tsh);
+      div.appendChild(c);
+
+      grid.appendChild(div);
+    }
+  }
+
+  const srcPath = "img.src = \"<span class='str'>../assets/Tiles/Style 1/TileStyle1.png</span>\";";
+
+  document.getElementById('codeBlock').innerHTML =
+    '<span class="cm">// Загрузка:</span>\n' +
+    'const img = new Image();\n' + srcPath + '\n\n' +
+    '<span class="cm">// Обрезка (crop):</span>\n' +
+    'const CR = { x: ' + sx.toFixed(0) + ', y: ' + sy.toFixed(0) + ', w: ' + sw.toFixed(0) + ', h: ' + sh.toFixed(0) + ' };\n\n' +
+    '<span class="cm">// Размер одной части (px)</span>\n' +
+    'const TW = ' + TW.toFixed(2) + ', TH = ' + TH.toFixed(2) + ';\n\n' +
+    '<span class="cm">// Отрисовка части #N (0—' + (total - 1) + '):</span>\n' +
+    'function drawTile(ctx, img, n, x, y, w, h) {\n' +
+    '  const col = n % ' + nCols + ';\n' +
+    '  const row = Math.floor(n / ' + nCols + ');\n' +
+    '  const sx = Math.round(CR.x + col * ' + TW.toFixed(2) + ');\n' +
+    '  const sy = Math.round(CR.y + row * ' + TH.toFixed(2) + ');\n' +
+    '  const sw = Math.round(Math.min(' + TW.toFixed(2) + ', CR.x + CR.w - sx));\n' +
+    '  const sh = Math.round(Math.min(' + TH.toFixed(2) + ', CR.y + CR.h - sy));\n' +
+    "  ctx.drawImage(img, sx, sy, sw, sh, x, y, w || sw, h || sh);\n" +
+    '}';
+
+  updateOverlay();
+}
+
+document.querySelectorAll('.crop-box input').forEach(el => {
+  el.addEventListener('change', split);
+  el.addEventListener('keydown', function(e) { if (e.key === 'Enter') split(); });
+});
+document.getElementById('colsInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') split(); });
+document.getElementById('rowsInput').addEventListener('keydown', function(e) { if (e.key === 'Enter') split(); });
+
+img.onload = function() {
+  const origCtx = document.getElementById('origCanvas').getContext('2d');
+  origCtx.drawImage(img, 0, 0);
+  resetCrop();
+};
+
+img.onerror = function() {
+  document.querySelector('.subtitle').textContent = 'Ошибка загрузки TileStyle1.png';
+};
+</script>
+</body>
+</html>

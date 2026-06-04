@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Button UI — 144 кнопки</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+h1 { color: #e94560; font-size: 24px; margin-bottom: 4px; }
+.subtitle { color: #888; font-size: 14px; margin-bottom: 16px; }
+canvas { border-radius: 12px; background: #16213e; box-shadow: 0 4px 20px rgba(0,0,0,0.4); display: block; max-width: 100%; cursor: pointer; }
+#detail { display: none; background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 20px; margin-top: 16px; width: 100%; max-width: 860px; box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+#detail.show { display: block; }
+#detail h3 { color: #e94560; margin-bottom: 12px; font-size: 18px; }
+#detail .row { display: flex; gap: 8px; margin-bottom: 5px; font-size: 14px; }
+#detail .label { color: #888; min-width: 130px; flex-shrink: 0; }
+#detail .value { color: #eee; word-break: break-all; }
+#detail pre { background: #0d1117; border-radius: 8px; padding: 14px; margin-top: 10px; overflow-x: auto; font-size: 13px; color: #c9d1d9; }
+#detail .cm { color: #8b949e; }
+#detail .str { color: #a5d6ff; }
+#preview { border: 2px solid #e94560; border-radius: 4px; image-rendering: pixelated; margin: 8px 0; }
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.btn-row button { background: #e94560; color: #fff; border: none; border-radius: 8px; padding: 10px 20px; font-size: 14px; cursor: pointer; }
+.btn-row button:hover { background: #d63851; }
+.btn-row button.sec { background: #0f3460; }
+.btn-row button.sec:hover { background: #1a4a7a; }
+</style>
+</head>
+<body>
+<h1>Button UI — 144 кнопки</h1>
+<div class="subtitle">Спрайт-лист 192×192, сетка 12×12, каждая кнопка 16×16. Кликни на любую для инструкции.</div>
+<canvas id="canvas"></canvas>
+<div id="detail"></div>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const detail = document.getElementById('detail');
+
+const CELL = 16;
+const COLS = 12;
+const ROWS = 12;
+const TOTAL = COLS * ROWS; // 144
+
+const sheetImg = new Image();
+sheetImg.src = '../assets/button_ui.png';
+
+sheetImg.onload = function() {
+  init();
+};
+sheetImg.onerror = function() {
+  document.querySelector('.subtitle').textContent = 'Ошибка: не удалось загрузить button_ui.png';
+};
+
+function init() {
+  renderGallery(-1);
+
+  canvas.onclick = function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const sx = canvas.width / rect.width;
+    const sy = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * sx;
+    const my = (e.clientY - rect.top) * sy;
+
+    const PAD = 6;
+    const COLS_G = 16;
+    const cellW = (canvas.width - PAD * (COLS_G + 1)) / COLS_G;
+    const cellH = cellW;
+
+    const col = Math.floor(mx / (cellW + PAD));
+    const row = Math.floor(my / (cellH + PAD));
+    const idx = row * COLS_G + col;
+
+    if (idx >= 0 && idx < TOTAL) {
+      showDetail(idx);
+      renderGallery(idx);
+    }
+  };
+}
+
+function renderGallery(selected) {
+  const PAD = 6;
+  const COLS_G = 16;
+  const w = Math.min(window.innerWidth - 32, 900);
+  const cellW = (w - PAD * (COLS_G + 1)) / COLS_G;
+  const cellH = cellW;
+  const rowsG = Math.ceil(TOTAL / COLS_G);
+
+  canvas.width = w;
+  canvas.height = rowsG * cellH + PAD * (rowsG + 1);
+  ctx.clearRect(0, 0, w, canvas.height);
+  ctx.fillStyle = '#16213e';
+  ctx.fillRect(0, 0, w, canvas.height);
+
+  for (let i = 0; i < TOTAL; i++) {
+    const col = i % COLS_G;
+    const row = Math.floor(i / COLS_G);
+    const x = PAD + col * (cellW + PAD);
+    const y = PAD + row * (cellH + PAD);
+
+    const sx = (i % COLS) * CELL;
+    const sy = Math.floor(i / COLS) * CELL;
+
+    if (i === selected) {
+      ctx.strokeStyle = '#e94560';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(x - 1.5, y - 1.5, cellW + 3, cellH + 3);
+    }
+
+    ctx.drawImage(sheetImg, sx, sy, CELL, CELL, x, y, cellW, cellH);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x, y + cellH - 16, cellW, 16);
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, x + cellW / 2, y + cellH - 8);
+  }
+}
+
+function showDetail(idx) {
+  const num = idx + 1;
+  const sx = (idx % COLS) * CELL;
+  const sy = Math.floor(idx / COLS) * CELL;
+  const row = Math.floor(idx / COLS) + 1;
+  const col = (idx % COLS) + 1;
+
+  // create a data URL of this single button
+  const c = document.createElement('canvas');
+  c.width = CELL;
+  c.height = CELL;
+  const cx = c.getContext('2d');
+  cx.drawImage(sheetImg, sx, sy, CELL, CELL, 0, 0, CELL, CELL);
+  const dataUrl = c.toDataURL();
+
+  const h = '<h3>#' + num + ' — Кнопка (' + row + ',' + col + ')</h3>' +
+    '<img id="preview" src="' + dataUrl + '" width="64" height="64" style="border:2px solid #e94560;border-radius:4px;image-rendering:pixelated;margin:8px 0">' +
+    '<div class="row"><span class="label">Номер</span><span class="value">' + num + ' / ' + TOTAL + '</span></div>' +
+    '<div class="row"><span class="label">Позиция в сетке</span><span class="value">Строка ' + row + ', Колонка ' + col + '</span></div>' +
+    '<div class="row"><span class="label">Координаты в спрайте</span><span class="value">(' + sx + ', ' + sy + ') — ' + (sx + CELL) + '×' + (sy + CELL) + '</span></div>' +
+    '<div class="row"><span class="label">Размер</span><span class="value">' + CELL + '×' + CELL + ' px</span></div>' +
+    '<div class="row"><span class="label">Файл</span><span class="value">assets/button_ui.png</span></div>' +
+
+    '<pre>' +
+    '<span class="cm">// 1. Загрузи спрайт-лист (один раз):</span>\n' +
+    'const btnUI = new Image();\n' +
+    "btnUI.src = '<span class='str'>../assets/button_ui.png</span>';\n\n" +
+    '<span class="cm">// 2. Извлеки кнопку #' + num + ' (строка ' + row + ', колонка ' + col + '):</span>\n' +
+    'const sx = ' + sx + ', sy = ' + sy + ';  // <span class="cm">сдвиг в спрайт-листе</span>\n' +
+    'const SW = ' + CELL + ', SH = ' + CELL + '; // <span class="cm">размер одной кнопки</span>\n\n' +
+    '<span class="cm">// 3. Отрисуй на canvas:</span>\n' +
+    'ctx.drawImage(btnUI, sx, sy, SW, SH, btnX, btnY, SW, SH);\n\n' +
+    '<span class="cm">// 4. Или с произвольным размером:</span>\n' +
+    'ctx.drawImage(btnUI, sx, sy, SW, SH, btnX, btnY, желаемая_ширина, желаемая_высота);\n' +
+    '</pre>' +
+
+    '<div class="btn-row">' +
+    '<button onclick="downloadBtn(' + idx + ')">Скачать PNG</button>' +
+    '<button class="sec" onclick="downloadSheet()">Скачать весь спрайт-лист</button>' +
+    '</div>';
+
+  detail.className = 'show';
+  detail.innerHTML = h;
+}
+
+window.downloadBtn = function(idx) {
+  const num = idx + 1;
+  const sx = (idx % COLS) * CELL;
+  const sy = Math.floor(idx / COLS) * CELL;
+  const c = document.createElement('canvas');
+  c.width = CELL;
+  c.height = CELL;
+  const cx = c.getContext('2d');
+  cx.drawImage(sheetImg, sx, sy, CELL, CELL, 0, 0, CELL, CELL);
+  const a = document.createElement('a');
+  a.download = 'button_' + num + '.png';
+  a.href = c.toDataURL();
+  a.click();
+};
+
+window.downloadSheet = function() {
+  const a = document.createElement('a');
+  a.download = 'button_ui.png';
+  a.href = '../assets/button_ui.png';
+  a.click();
+};
+
+window.addEventListener('resize', function() {
+  if (sheetImg.complete && sheetImg.naturalWidth > 0) {
+    renderGallery(-1);
+  }
+});
+</script>
+</body>
+</html>

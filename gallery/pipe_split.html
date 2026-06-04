@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PipeStyle1 — разделено на 3×8 (24 части)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; color: #eee; font-family: 'Segoe UI', Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 16px; }
+h1 { color: #e94560; font-size: 24px; margin-bottom: 4px; }
+.subtitle { color: #888; font-size: 14px; margin-bottom: 16px; }
+.preview { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; margin-bottom: 20px; }
+.orig { background: #16213e; border-radius: 12px; padding: 16px; text-align: center; border: 1px solid #0f3460; }
+.orig h3 { color: #a8a8b3; font-size: 14px; margin-bottom: 8px; }
+.orig canvas { image-rendering: pixelated; }
+.slices { background: #16213e; border-radius: 12px; padding: 16px; border: 1px solid #0f3460; }
+.slices h3 { color: #a8a8b3; font-size: 14px; margin-bottom: 8px; }
+.grid { display: grid; grid-template-columns: repeat(8, auto); gap: 6px; justify-items: center; }
+.slice-item { text-align: center; }
+.slice-item canvas { image-rendering: pixelated; border-radius: 4px; border: 1px solid #0f3460; display: block; }
+.slice-item .num { background: #e94560; border-radius: 50%; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; margin-bottom: 2px; }
+.slice-item .info { color: #888; font-size: 10px; }
+code { background: #0d1117; border-radius: 12px; padding: 20px; display: block; max-width: 800px; width: 100%; font-size: 13px; color: #c9d1d9; margin-top: 16px; }
+code .cm { color: #8b949e; }
+code .str { color: #a5d6ff; }
+</style>
+</head>
+<body>
+<h1>PipeStyle1 — разбивка 3×8 (24 части)</h1>
+<div class="subtitle">Оригинал 128×160 px → сетка 3 колонки × 8 строк, каждый тайл 42×20 px</div>
+
+<div class="preview">
+  <div class="orig">
+    <h3>Оригинал (128×160)</h3>
+    <canvas id="origCanvas" width="128" height="160"></canvas>
+  </div>
+  <div class="slices">
+    <h3>24 части (по рядам)</h3>
+    <div class="grid" id="grid"></div>
+  </div>
+</div>
+
+<code>
+<span class="cm">// Загрузка:</span>
+const img = new Image();
+img.src = "<span class='str'>../assets/Tiles/Style 1/PipeStyle1.png</span>";
+
+<span class="cm">// Размер одной части</span>
+const TW = 42, TH = 20; <span class="cm">// 128≈42×3, 160/8=20</span>
+
+<span class="cm">// Отрисовка части #N (0—23, по рядам):</span>
+function drawTile(ctx, img, n, x, y, w, h) {
+  const col = n % 3;
+  const row = Math.floor(n / 3);
+  ctx.drawImage(img, col * TW, row * TH, TW, TH, x, y, w || TW, h || TH);
+}
+
+<span class="cm">// Пример — левый столбец (8 частей):</span>
+for (let row = 0; row &lt; 8; row++) {
+  drawTile(ctx, pipeImg, row * 3, pipeX, pipeY + row * 20);
+}
+</code>
+
+<script>
+const img = new Image();
+img.src = '../assets/Tiles/Style 1/PipeStyle1.png';
+
+img.onload = function() {
+  const origCtx = document.getElementById('origCanvas').getContext('2d');
+  origCtx.drawImage(img, 0, 0);
+
+  const grid = document.getElementById('grid');
+  const COLS = 3, ROWS = 8;
+  const TW = Math.floor(img.width / COLS);   // 42
+  const TH = Math.floor(img.height / ROWS);  // 20
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const num = row * COLS + col + 1;
+      const div = document.createElement('div');
+      div.className = 'slice-item';
+
+      const numDiv = document.createElement('div');
+      numDiv.className = 'num';
+      numDiv.textContent = num;
+      div.appendChild(numDiv);
+
+      const c = document.createElement('canvas');
+      c.width = TW;
+      c.height = TH;
+      const cx = c.getContext('2d');
+      cx.drawImage(img, col * TW, row * TH, TW, TH, 0, 0, TW, TH);
+      div.appendChild(c);
+
+      const info = document.createElement('div');
+      info.className = 'info';
+      info.textContent = (col * TW) + ',' + (row * TH);
+      div.appendChild(info);
+
+      grid.appendChild(div);
+    }
+  }
+};
+
+img.onerror = function() {
+  document.querySelector('.subtitle').textContent = 'Ошибка загрузки PipeStyle1.png';
+};
+</script>
+</body>
+</html>

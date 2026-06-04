@@ -351,9 +351,9 @@
         const PIPE_SPEED = 3;
         const PIPE_GAP = 150;
         const pipeBodyTex = new Image();
-        pipeBodyTex.src = 'assets/Tiles/Style%201/основа%20трубы.png';
+        pipeBodyTex.src = 'assets/Tiles/Style%201/pipe_body.png';
         const pipeBodyTex180 = new Image();
-        pipeBodyTex180.src = 'assets/Tiles/Style%201/основа%20трубы%20180.png';
+        pipeBodyTex180.src = 'assets/Tiles/Style%201/pipe_body_180.png';
         const GROUND_H = 24;
         const SQ = 40;
         const groundTex = new Image();
@@ -563,17 +563,17 @@
             for (const p of pipes) {
                 const px = p.x;
                 // top pipe body
-                if (pipeBodyTex180.complete) {
+                if (pipeBodyTex180.complete && pipeBodyTex180.naturalWidth > 0) {
                     ctx.drawImage(pipeBodyTex180, 0, 0, 32, 179, px, 0, PIPE_W, p.topH);
                 } else {
-                    ctx.fillStyle = '#0c2e44';
+                    ctx.fillStyle = '#888';
                     ctx.fillRect(px, 0, PIPE_W, p.topH);
                 }
                 // bottom pipe body
-                if (pipeBodyTex.complete) {
+                if (pipeBodyTex.complete && pipeBodyTex.naturalWidth > 0) {
                     ctx.drawImage(pipeBodyTex, 0, 0, 32, 179, px, p.bottomY, PIPE_W, GAME_H - GROUND_H - p.bottomY);
                 } else {
-                    ctx.fillStyle = '#0c2e44';
+                    ctx.fillStyle = '#888';
                     ctx.fillRect(px, p.bottomY, PIPE_W, GAME_H - GROUND_H - p.bottomY);
                 }
             }

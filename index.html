@@ -18,11 +18,71 @@
             display: block;
             background: #4dc9f6;
         }
+        #fileGate {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            max-width: 520px;
+            padding: 32px;
+            text-align: center;
+            color: #eee;
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        #fileGate h1 { font-size: 22px; color: #e94560; }
+        #fileGate p { font-size: 15px; line-height: 1.5; color: #bbb; }
+        #fileGate ol { text-align: left; font-size: 14px; line-height: 1.8; color: #ccc; }
+        #fileGate button {
+            margin-top: 8px;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            border: none;
+            border-radius: 8px;
+            background: #e94560;
+            color: #fff;
+        }
+        #fileGate button:hover { background: #d63851; }
+        #fileGate code { background: #16213e; padding: 2px 6px; border-radius: 4px; }
     </style>
 </head>
 <body>
+    <div id="fileGate">
+        <h1>Игра не открывается через file://</h1>
+        <p>Браузер блокирует звуки и файлы при открытии HTML с диска. Это не ошибка игры.</p>
+        <ol>
+            <li>Запустите <code>start.bat</code> в папке игры (дождитесь окна сервера).</li>
+            <li>Нажмите кнопку — игра откроется <strong>в новой вкладке</strong> браузера (не во встроенном превью Cursor).</li>
+            <li>Или скопируйте: <code>http://localhost:8080/index.html</code></li>
+        </ol>
+        <button type="button" id="openGameBtn">Открыть в браузере (новая вкладка)</button>
+        <p id="fileGateHint" style="font-size:13px;color:#888;"></p>
+    </div>
     <canvas id="gameCanvas"></canvas>
     <script>
+        const GAME_URL = 'http://localhost:8080/index.html';
+        const inIframe = window.self !== window.top;
+        function openGameInBrowser() {
+            const w = window.open(GAME_URL, '_blank', 'noopener,noreferrer');
+            if (!w) {
+                document.getElementById('fileGateHint').textContent =
+                    'Всплывающие окна заблокированы. Вставьте адрес вручную: ' + GAME_URL;
+            }
+        }
+        if (location.protocol === 'file:') {
+            document.getElementById('gameCanvas').style.display = 'none';
+            document.getElementById('fileGate').style.display = 'flex';
+            document.getElementById('openGameBtn').onclick = openGameInBrowser;
+        } else if (inIframe) {
+            document.getElementById('gameCanvas').style.display = 'none';
+            document.getElementById('fileGate').style.display = 'flex';
+            document.querySelector('#fileGate h1').textContent = 'Не открывайте игру во встроенном превью';
+            document.querySelector('#fileGate p').textContent =
+                'Cursor/IDE вставляет страницу в iframe — из‑за этого появляются ошибки chrome-error и localhost.';
+            document.getElementById('openGameBtn').onclick = openGameInBrowser;
+        } else {
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
 
@@ -44,7 +104,236 @@
         }
 
         const jumpSound = new Audio('assets/Audio/flap.mp3');
-        const passSound = new Audio('assets/Audio/Звук перехода между трубами.mp3');
+        const coinSound = new Audio('assets/Audio/Звук подобранной монеты.mp3');
+        const purchaseSound = new Audio('assets/Audio/Звук покупки.mp3');
+        const gameOverSound = new Audio('assets/Audio/Звук при проигрыше.mp3');
+        const bgMusic = new Audio('assets/Audio/Музыка на фон.mp3');
+        bgMusic.loop = true;
+        const buttonClickSrc = [
+            'assets/Audio/Звук нажатие на кнопку 1.mp3',
+            'assets/Audio/Звук нажатие на кнопку 2.mp3',
+        ];
+        let audioUnlocked = false;
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            audioUnlocked = true;
+            [jumpSound, coinSound, purchaseSound, gameOverSound, ...buttonClickSrc.map(src => new Audio(src))].forEach((a) => {
+                const vol = a.volume;
+                a.volume = 0.001;
+                const p = a.play();
+                if (p) {
+                    p.then(() => {
+                        a.pause();
+                        a.currentTime = 0;
+                        a.volume = vol;
+                    }).catch(() => {});
+                }
+            });
+        }
+        function playButtonClick() {
+            unlockAudio();
+            const s = new Audio(buttonClickSrc[Math.floor(Math.random() * buttonClickSrc.length)]);
+            s.volume = sfxVolume;
+            s.play().catch(() => {});
+        }
+        function playPurchaseSound() {
+            unlockAudio();
+            purchaseSound.volume = sfxVolume;
+            purchaseSound.currentTime = 0;
+            purchaseSound.play().catch(() => {});
+        }
+        function syncBgMusic() {
+            bgMusic.volume = musicVolume;
+            if (gameState === 'playing') {
+                if (bgMusic.paused) {
+                    unlockAudio();
+                    bgMusic.play().catch(() => {});
+                }
+            } else if (!bgMusic.paused) {
+                bgMusic.pause();
+                bgMusic.currentTime = 0;
+            }
+        }
+        let selectedPlayer = localStorage.getItem('selectedPlayer') || 'StyleBird2/Bird2-1.png';
+        const playerSkins = [
+            { file: 'StyleBird2/Bird2-1.png', name: 'Птица 1', price: 0 },
+            { file: 'StyleBird2/Bird2-2.png', name: 'Птица 2', price: 25 },
+            { file: 'StyleBird2/Bird2-3.png', name: 'Птица 3', price: 50 },
+            { file: 'StyleBird2/Bird2-4.png', name: 'Птица 4', price: 75 },
+            { file: 'StyleBird2/Bird2-5.png', name: 'Птица 5', price: 100 },
+            { file: 'StyleBird2/Bird2-6.png', name: 'Птица 6', price: 100 },
+            { file: 'StyleBird2/Bird2-7.png', name: 'Птица 7', price: 100 },
+            { file: 'StyleBird1/Bird1-1.png', name: 'Птица 8', price: 0 },
+            { file: 'StyleBird1/Bird1-2.png', name: 'Птица 9', price: 25 },
+            { file: 'StyleBird1/Bird1-3.png', name: 'Птица 10', price: 50 },
+            { file: 'StyleBird1/Bird1-4.png', name: 'Птица 11', price: 75 },
+        ];
+        let ownedPlayers = JSON.parse(localStorage.getItem('ownedPlayers') || '["StyleBird1/Bird1-1.png","StyleBird2/Bird2-1.png"]');
+        function saveOwnedPlayers() { localStorage.setItem('ownedPlayers', JSON.stringify(ownedPlayers)); }
+        const titleImg = new Image();
+        titleImg.src = 'assets/title_logo.png';
+        const menuBg = new Image();
+        menuBg.src = 'assets/demo-img-1.png';
+        const gameBg = new Image();
+        const coinSheet = new Image();
+        coinSheet.src = 'assets/Money/coin1_16x16.png';
+        const COIN_FRAME_W = 16;
+        const COIN_FRAME_H = 16;
+        const COIN_FRAMES = 15;
+        function getCoinAnimFrame() {
+            return Math.floor(Date.now() / 66) % COIN_FRAMES;
+        }
+        function drawCoinSprite(cx, cy, size) {
+            const half = size / 2;
+            if (coinSheet.complete && coinSheet.naturalWidth > 0) {
+                const f = getCoinAnimFrame();
+                ctx.drawImage(
+                    coinSheet,
+                    f * COIN_FRAME_W, 0, COIN_FRAME_W, COIN_FRAME_H,
+                    cx - half, cy - half, size, size
+                );
+            } else {
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(cx, cy, half, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        let selectedBg = localStorage.getItem('selectedBg') || 'Background2.png';
+        const bgList = [
+            { file: 'Background1.png', name: 'Фон 1', price: 0 },
+            { file: 'Background2.png', name: 'Фон 2', price: 0 },
+            { file: 'Background5.png', name: 'Фон 5', price: 50 },
+            { file: 'Background6-Sheet.png', name: 'Фон 6', price: 50 },
+            { file: 'Background7.png', name: 'Фон 7', price: 50 },
+            { file: 'Background8.png', name: 'Фон 8', price: 50 },
+            { file: 'Background9.png', name: 'Фон 9', price: 50 },
+        ];
+        let ownedBgs = JSON.parse(localStorage.getItem('ownedBgs') || '["Background1.png","Background2.png"]');
+        function saveOwnedBgs() { localStorage.setItem('ownedBgs', JSON.stringify(ownedBgs)); }
+        function selectBg(file) { selectedBg = file; localStorage.setItem('selectedBg', file); gameBg.src = 'assets/Background/' + file; }
+        function resetShop() {
+            shopScroll = 0;
+            ownedBgs = ['Background1.png', 'Background2.png'];
+            ownedPlayers = ['StyleBird1/Bird1-1.png', 'StyleBird2/Bird2-1.png'];
+            saveOwnedBgs();
+            saveOwnedPlayers();
+            selectBg('Background2.png');
+            selectPlayer('StyleBird2/Bird2-1.png');
+        }
+        gameBg.src = 'assets/Background/' + selectedBg;
+        // preload all background thumbnails
+        const bgThumbs = {};
+        bgList.forEach(bg => { const img = new Image(); img.src = 'assets/Background/' + bg.file; bgThumbs[bg.file] = img; });
+        // preload all player skin thumbnails
+        const playerThumbs = {};
+        playerSkins.forEach(p => { const img = new Image(); img.src = 'assets/Player/' + p.file; playerThumbs[p.file] = img; });
+        let birdImg = playerThumbs[selectedPlayer];
+        function selectPlayer(file) {
+            selectedPlayer = file;
+            localStorage.setItem('selectedPlayer', file);
+            birdImg = playerThumbs[file] || birdImg;
+        }
+
+        function drawRectButton(b, idx) {
+            const x = b.x - b.w / 2;
+            const y = b.y - b.h / 2;
+            if (idx >= 0) {
+                ctx.fillStyle = 'rgba(255,255,255,0.15)';
+                ctx.fillRect(x - 4, y - 4, b.w + 8, b.h + 8);
+            }
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(x, y, b.w, b.h);
+            ctx.font = 'bold 22px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 3;
+            ctx.strokeText(b.label, b.x, b.y);
+            ctx.fillStyle = '#003300';
+            ctx.fillText(b.label, b.x, b.y);
+        }
+
+        function hitTestRect(b, mx, my) {
+            return mx >= b.x - b.w / 2 && mx <= b.x + b.w / 2 && my >= b.y - b.h / 2 && my <= b.y + b.h / 2;
+        }
+
+        const SLIDER_X = GAME_W / 2 - 150;
+        const SLIDER_W = 300;
+        const SLIDER_H = 14;
+
+        function drawSlider(label, value, y) {
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 2;
+            ctx.strokeText(label, SLIDER_X, y);
+            ctx.fillStyle = '#003300';
+            ctx.fillText(label, SLIDER_X, y);
+            const trackY = y + 30;
+            const steps = 5;
+            const segW = SLIDER_W / steps;
+            const barH = SLIDER_H;
+            const barGap = 4;
+            for (let i = 0; i < steps; i++) {
+                const bx = SLIDER_X + i * segW + barGap / 2;
+                const bw = segW - barGap;
+                const fill = i < value * steps;
+                ctx.fillStyle = fill ? 'white' : 'rgba(255,255,255,0.2)';
+                ctx.beginPath();
+                ctx.roundRect(bx, trackY, bw, barH, 3);
+                ctx.fill();
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.roundRect(bx, trackY, bw, barH, 3);
+                ctx.stroke();
+            }
+        }
+
+        function hitTestSlider(mx, my, y) {
+            const trackY = y + 30;
+            return mx >= SLIDER_X && mx <= SLIDER_X + SLIDER_W && my >= trackY && my <= trackY + SLIDER_H;
+        }
+
+        function sliderValueFromX(mx) {
+            const steps = 5;
+            const raw = Math.max(0, Math.min(1, (mx - SLIDER_X) / SLIDER_W));
+            return Math.round(raw * (steps - 1)) / (steps - 1);
+        }
+
+        let pipes = [];
+        let coins = [];
+        let frame = 0;
+        let coinTimer = 0;
+        let pipeTimer = 0;
+        let totalCoins = parseInt(localStorage.getItem('totalCoins')) || 0;
+        let pipesPassed = 0;
+        let speedMult = 1;
+        let bgOffset = 0;
+        let groundOffset = 0;
+        let gameState = 'menu';
+        let birdFlapTimer = 0;
+        let birdFrame = 0;
+
+        const buttons = [
+            { label: 'Играть', x: GAME_W / 2, y: GAME_H / 2 - 65, w: 200, h: 50 },
+            { label: 'Магазин', x: GAME_W / 2, y: GAME_H / 2 + 15, w: 200, h: 50 },
+            { label: 'Настройки', x: GAME_W / 2, y: GAME_H / 2 + 95, w: 200, h: 50 },
+        ];
+
+        let hoveredButton = -1;
+        let showCheats = false;
+        let sfxVolume = 0.5;
+        let musicVolume = 0.5;
+        let shopCategory = 'background';
+        let shopScroll = 0;
+        const shopCategories = [
+            { label: 'Фон', key: 'background' },
+            { label: 'Игрок', key: 'player' },
+        ];
 
         const player = {
             x: 80,
@@ -56,25 +345,42 @@
         const GRAVITY = 0.4;
         const JUMP_FORCE = -7;
 
-        const PIPE_W = 75;
+        const PIPE_BODY_SX = 0, PIPE_BODY_SY = 0, PIPE_BODY_W = 28, PIPE_BODY_H = 28;
+        const PIPE_CAP_SX = 0, PIPE_CAP_SY = 0, PIPE_CAP_W = 30, PIPE_CAP_H = 18;
+        const PIPE_W = 64;
+        const PIPE_SPEED = 3;
         const PIPE_GAP = 150;
-        const PIPE_SPEED = 2.5;
-
-        let pipes = [];
-        let coins = [];
-        let frame = 0;
-        let coinTimer = 0;
-        let pipeTimer = 0;
-        let gameOver = false;
-        let totalCoins = 0;
-        let pipesPassed = 0;
-        let speedMult = 1;
+        const pipeBodyTex = new Image();
+        pipeBodyTex.src = 'assets/Tiles/Style%201/основа%20трубы.png';
+        const pipeBodyTex180 = new Image();
+        pipeBodyTex180.src = 'assets/Tiles/Style%201/основа%20трубы%20180.png';
+        const GROUND_H = 24;
+        const SQ = 40;
+        const groundTex = new Image();
+        groundTex.src = 'assets/Tiles/Style%201/TileStyle1.png';
+        const BIRD_FRAME_W = 16;
+        const BIRD_FRAME_H = 16;
+        const BIRD_FRAMES = 4;
 
         function jump() {
-            if (gameOver) return reset();
+            if (gameState === 'menu') {
+                gameState = 'playing';
+                reset();
+                return;
+            }
+            if (gameState === 'gameover') {
+                gameState = 'playing';
+                reset();
+                return;
+            }
+            if (gameState !== 'playing') return;
             player.velY = JUMP_FORCE;
+            unlockAudio();
+            jumpSound.volume = sfxVolume;
             jumpSound.currentTime = 0;
-            jumpSound.play();
+            jumpSound.play().catch(() => {});
+            birdFlapTimer = 24;
+            birdFrame = 0;
         }
 
         function reset() {
@@ -82,8 +388,9 @@
             coins = [];
             frame = 0;
             coinTimer = 0;
-            gameOver = false;
             pipesPassed = 0;
+            bgOffset = 0;
+            groundOffset = 0;
             player.y = 200;
             player.velY = 0;
         }
@@ -94,7 +401,7 @@
 
         function spawnPair() {
             const minTop = 40;
-            const maxTop = GAME_H - PIPE_GAP - 40;
+            const maxTop = GAME_H - PIPE_GAP - GROUND_H - 40;
             const topH = Math.floor(Math.random() * (maxTop - minTop + 1)) + minTop;
             const bottomY = topH + PIPE_GAP;
 
@@ -109,7 +416,7 @@
                 forbidden.push([p.bottomY - margin, GAME_H]);
             }
 
-            const safe = [[0, GAME_H]];
+            const safe = [[0, GAME_H - GROUND_H]];
             for (const [fMin, fMax] of forbidden) {
                 for (let i = safe.length - 1; i >= 0; i--) {
                     const [sMin, sMax] = safe[i];
@@ -138,7 +445,7 @@
         }
 
         function update() {
-            if (gameOver) return;
+            if (gameState !== 'playing') return;
 
             frame++;
 
@@ -175,8 +482,8 @@
             // physics
             player.velY += GRAVITY;
             player.y += player.velY;
-            if (player.y > GAME_H - player.size) {
-                player.y = GAME_H - player.size;
+            if (player.y > GAME_H - GROUND_H - player.size) {
+                player.y = GAME_H - GROUND_H - player.size;
                 player.velY = 0;
             }
             if (player.y < 0) {
@@ -191,8 +498,12 @@
                     pipesPassed++;
                 }
                 if (rectCollide(player.x, player.y, player.size, player.size, p.x, 0, PIPE_W, p.topH) ||
-                    rectCollide(player.x, player.y, player.size, player.size, p.x, p.bottomY, PIPE_W, GAME_H - p.bottomY)) {
-                    gameOver = true;
+                    rectCollide(player.x, player.y, player.size, player.size, p.x, p.bottomY, PIPE_W, GAME_H - GROUND_H - p.bottomY)) {
+                    gameState = 'gameover';
+                    playButtonClick();
+                    gameOverSound.volume = sfxVolume;
+                    gameOverSound.currentTime = 0;
+                    gameOverSound.play().catch(() => {});
                 }
             }
 
@@ -203,29 +514,81 @@
                 if (Math.hypot(dx, dy) < player.size / 2 + coin.r) {
                     coin.collected = true;
                     totalCoins++;
+                    localStorage.setItem('totalCoins', totalCoins);
+                    coinSound.volume = sfxVolume;
+                    coinSound.currentTime = 0;
+                    coinSound.play().catch(() => {});
                 }
             }
         }
 
         function draw() {
             update();
+            syncBgMusic();
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+            // background
+            if (gameBg.complete && gameState !== 'menu') {
+                const bw = gameBg.width;
+                const bh = gameBg.height;
+                const scale = GAME_H / bh;
+                const sw = bw * scale;
+                const offX = (bgOffset * scale) % sw;
+                for (let x = -offX; x < GAME_W; x += sw) {
+                    ctx.drawImage(gameBg, 0, 0, bw, bh, x, 0, sw, GAME_H);
+                }
+            }
+
+            // ground with texture from TileStyle1
+            const gy = GAME_H - GROUND_H;
+            ctx.fillStyle = '#2d7a2d';
+            ctx.fillRect(0, gy, GAME_W, GROUND_H);
+            if (groundTex.complete) {
+                for (let x = 0; x < GAME_W; x += SQ) {
+                    const sx = (x + groundOffset) % 280;
+                    const sw = Math.min(SQ, 280 - sx);
+                    ctx.drawImage(groundTex, sx, 0, sw, GROUND_H, x, gy, sw, GROUND_H);
+                    if (sw < SQ) {
+                        ctx.drawImage(groundTex, 0, 0, SQ - sw, GROUND_H, x + sw, gy, SQ - sw, GROUND_H);
+                    }
+                }
+            }
+
+            // background scroll
+            if (gameState === 'playing' || gameState === 'gameover') {
+                bgOffset = (bgOffset + PIPE_SPEED * speedMult * 0.5) % (gameBg.width || 256);
+                groundOffset = (groundOffset + PIPE_SPEED * speedMult) % 280;
+            }
+
             // pipes
-            ctx.fillStyle = '#8B00FF';
             for (const p of pipes) {
-                ctx.fillRect(p.x, 0, PIPE_W, p.topH);
-                ctx.fillRect(p.x, p.bottomY, PIPE_W, GAME_H - p.bottomY);
+                const px = p.x;
+                // top pipe body
+                if (pipeBodyTex180.complete) {
+                    ctx.drawImage(pipeBodyTex180, 0, 0, 32, 179, px, 0, PIPE_W, p.topH);
+                } else {
+                    ctx.fillStyle = '#0c2e44';
+                    ctx.fillRect(px, 0, PIPE_W, p.topH);
+                }
+                // bottom pipe body
+                if (pipeBodyTex.complete) {
+                    ctx.drawImage(pipeBodyTex, 0, 0, 32, 179, px, p.bottomY, PIPE_W, GAME_H - GROUND_H - p.bottomY);
+                } else {
+                    ctx.fillStyle = '#0c2e44';
+                    ctx.fillRect(px, p.bottomY, PIPE_W, GAME_H - GROUND_H - p.bottomY);
+                }
+                // top cap
+                ctx.fillStyle = '#1a5c1a';
+                ctx.fillRect(px, Math.round(p.topH - PIPE_CAP_H), PIPE_W, PIPE_CAP_H);
+                // bottom cap
+                ctx.fillRect(px, Math.round(p.bottomY), PIPE_W, PIPE_CAP_H);
             }
 
             // coins
-            ctx.fillStyle = '#FFD700';
             for (const c of coins) {
                 if (!c.collected) {
-                    ctx.beginPath();
-                    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
-                    ctx.fill();
+                    drawCoinSprite(c.x, c.y, c.r * 2);
                 }
             }
 
@@ -233,42 +596,433 @@
             ctx.textAlign = 'right';
             ctx.fillStyle = 'white';
             ctx.font = 'bold 26px Arial';
+            drawCoinSprite(GAME_W - 28, 28, 24);
             ctx.fillText(totalCoins, GAME_W - 50, 36);
-            ctx.fillStyle = 'blue';
-            ctx.fillRect(GAME_W - 40, 16, 24, 24);
             ctx.font = '12px Arial';
             ctx.fillText(pipesPassed, GAME_W - 10, 56);
             ctx.fillText((PIPE_SPEED * speedMult).toFixed(1), GAME_W - 10, 70);
 
             // player
-            ctx.fillStyle = 'red';
-            ctx.fillRect(player.x, player.y, player.size, player.size);
+            if (gameState === 'playing' || gameState === 'gameover') {
+                if (gameState === 'playing' && birdFlapTimer > 0) {
+                    birdFrame = (birdFrame + 1) % (BIRD_FRAMES * 6);
+                    birdFlapTimer--;
+                }
+                const idx = Math.floor(birdFrame / 6);
+                if (birdImg.complete) {
+                    ctx.drawImage(birdImg, idx * BIRD_FRAME_W, 0, BIRD_FRAME_W, BIRD_FRAME_H, player.x, player.y, player.size, player.size);
+                } else {
+                    ctx.fillStyle = 'red';
+                    ctx.fillRect(player.x, player.y, player.size, player.size);
+                }
+            }
 
-            if (gameOver) {
+            if (gameState === 'gameover') {
                 ctx.fillStyle = 'rgba(0,0,0,0.5)';
                 ctx.fillRect(0, 0, GAME_W, GAME_H);
+                ctx.fillStyle = '#003300';
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 4;
+                const bx = GAME_W / 2 - 130, by = GAME_H / 2 - 70, bw = 260, bh = 110;
+                ctx.fillRect(bx, by, bw, bh);
+                ctx.strokeRect(bx, by, bw, bh);
                 ctx.fillStyle = 'white';
-                ctx.font = 'bold 48px Arial';
+                ctx.font = 'bold 28px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('GAME OVER', GAME_W / 2, GAME_H / 2 - 10);
-                ctx.font = '20px Arial';
-                ctx.fillText('Click or Space to restart', GAME_W / 2, GAME_H / 2 + 40);
+                ctx.fillText('GAME OVER', GAME_W / 2, by + 34);
+                ctx.font = '16px Arial';
+                const elapsed = Math.floor(frame / 60);
+                const h = Math.floor(elapsed / 3600);
+                const m = Math.floor((elapsed % 3600) / 60);
+                const s = elapsed % 60;
+                const timeStr = h > 0
+                    ? h + ':' + (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s
+                    : m + ':' + (s < 10 ? '0' : '') + s;
+                ctx.fillText('Время: ' + timeStr, GAME_W / 2, by + 62);
+                ctx.fillText('Трубы: ' + pipesPassed, GAME_W / 2, by + 84);
+                // game over buttons
+                const restartBtn = { label: 'Рестарт', x: GAME_W / 2 - 90, y: GAME_H / 2 + 85, w: 140, h: 40 };
+                const menuBtn = { label: 'Назад', x: GAME_W / 2 + 90, y: GAME_H / 2 + 85, w: 140, h: 40 };
+                drawRectButton(restartBtn, hoveredButton === 10 ? 10 : -1);
+                drawRectButton(menuBtn, hoveredButton === 11 ? 11 : -1);
+            }
+
+            if (gameState === 'menu') {
+                if (menuBg.complete) {
+                    ctx.drawImage(menuBg, 0, 0, GAME_W, GAME_H);
+                }
+                ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                ctx.fillRect(0, 0, GAME_W, GAME_H);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                if (titleImg.complete) {
+                    const tw = Math.min(360, titleImg.naturalWidth);
+                    const th = titleImg.naturalHeight * (tw / titleImg.naturalWidth);
+                    ctx.drawImage(titleImg, (GAME_W - tw) / 2, 30, tw, th);
+                }
+                buttons.forEach((b, i) => drawRectButton(b, i));
+                if (showCheats) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+                    ctx.fillRect(GAME_W - 200, GAME_H - 135, 190, 105);
+                    ctx.strokeStyle = 'white';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(GAME_W - 200, GAME_H - 135, 190, 105);
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillText('+999 монет', GAME_W - 105, GAME_H - 117);
+                    ctx.fillStyle = '#ff4444';
+                    ctx.fillText('Удалить всё', GAME_W - 105, GAME_H - 82);
+                    ctx.fillStyle = '#66aaff';
+                    ctx.fillText('Сброс магазина', GAME_W - 105, GAME_H - 47);
+                }
+            }
+
+            if (gameState === 'settings') {
+                ctx.fillStyle = 'rgba(0,0,0,0.6)';
+                ctx.fillRect(0, 0, GAME_W, GAME_H);
+                const px = 60, py = 30, pw = GAME_W - 120, ph = GAME_H - 60;
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(px, py, pw, ph);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 36px Arial';
+                ctx.fillText('Настройки', GAME_W / 2, 65);
+                drawSlider('Звук', sfxVolume, 160);
+                drawSlider('Музыка', musicVolume, 240);
+                const back = { label: 'Назад', x: GAME_W / 2, y: 340, w: 200, h: 50 };
+                drawRectButton(back, hoveredButton === 0 ? 0 : -1);
+            }
+
+            if (gameState === 'shop') {
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(0, 0, GAME_W, GAME_H);
+                const px = 40, py = 20, pw = GAME_W - 80, ph = GAME_H - 40;
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 4;
+                ctx.strokeRect(px, py, pw, ph);
+                const catX = 60, catW = 110, catH = 40, catGap = 10;
+                const catStartY = 80;
+                shopCategories.forEach((cat, i) => {
+                    const cy = catStartY + i * (catH + catGap);
+                    const sel = cat.key === shopCategory;
+                    ctx.fillStyle = sel ? 'rgba(255,255,255,0.3)' : 'transparent';
+                    ctx.fillRect(catX, cy, catW, catH);
+                    ctx.strokeStyle = sel ? '#e94560' : 'white';
+                    ctx.lineWidth = sel ? 3 : 2;
+                    ctx.strokeRect(catX, cy, catW, catH);
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 16px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(cat.label, catX + catW / 2, cy + catH / 2);
+                });
+                ctx.fillStyle = 'rgba(255,255,255,0.05)';
+                ctx.fillRect(190, 80, GAME_W - 290, GAME_H - 180);
+                // coin box top-right of frame
+                const coinBoxX = GAME_W - 80 - 110, coinBoxY = 28, coinBoxW = 100, coinBoxH = 32;
+                ctx.fillStyle = 'rgba(0,0,0,0.5)';
+                ctx.beginPath();
+                ctx.roundRect(coinBoxX, coinBoxY, coinBoxW, coinBoxH, 6);
+                ctx.fill();
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.roundRect(coinBoxX, coinBoxY, coinBoxW, coinBoxH, 6);
+                ctx.stroke();
+                drawCoinSprite(coinBoxX + 16, coinBoxY + coinBoxH / 2, 20);
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'left';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(totalCoins, coinBoxX + 34, coinBoxY + coinBoxH / 2);
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(193, 83, GAME_W - 296, GAME_H - 186);
+                ctx.clip();
+                const scrollOff = shopScroll;
+                if (shopCategory === 'background') {
+                    const startX = 210, startY = 95, itemW = 130, itemH = 85, gap = 10, cols = 3;
+                    bgList.forEach((bg, i) => {
+                        const col = i % cols;
+                        const row = Math.floor(i / cols);
+                        const ix = startX + col * (itemW + gap);
+                        const iy = startY + row * (itemH + gap) - scrollOff;
+                        const owned = ownedBgs.includes(bg.file);
+                        const isSelected = selectedBg === bg.file;
+                        const thumb = bgThumbs[bg.file];
+                        if (thumb && thumb.complete) {
+                            ctx.drawImage(thumb, ix + 2, iy + 2, itemW - 4, 50);
+                        } else {
+                            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                            ctx.fillRect(ix + 2, iy + 2, itemW - 4, 50);
+                        }
+                        ctx.strokeStyle = isSelected ? '#00cc00' : (owned ? 'white' : '#666');
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(ix, iy, itemW, itemH);
+                        ctx.fillStyle = 'white';
+                        ctx.font = '11px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        if (owned) {
+                            ctx.fillStyle = isSelected ? '#00cc00' : '#aaa';
+                            ctx.fillText(isSelected ? 'Вкл' : 'Выбрать', ix + itemW / 2, iy + itemH - 14);
+                        } else {
+                            ctx.fillStyle = '#FFD700';
+                            ctx.fillText(bg.price, ix + itemW / 2, iy + itemH - 14);
+                        }
+                    });
+                } else if (shopCategory === 'player') {
+                    const startX = 210, startY = 95, itemW = 130, itemH = 85, gap = 10, cols = 3;
+                    const totalRows = Math.ceil(playerSkins.length / cols);
+                    const contentH = totalRows * (itemH + gap) - gap;
+                    const panelTop = 83;
+                    const totalH = (startY - panelTop) + contentH;
+                    const panelH = GAME_H - 186;
+                    if (totalH > panelH) {
+                        const scrollH = panelH * panelH / totalH;
+                        const scrollY = panelTop + (shopScroll / (totalH - panelH)) * (panelH - scrollH);
+                        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                        ctx.fillRect(GAME_W - 100, scrollY, 6, scrollH);
+                    }
+                    playerSkins.forEach((p, i) => {
+                        const col = i % cols;
+                        const row = Math.floor(i / cols);
+                        const ix = startX + col * (itemW + gap);
+                        const iy = startY + row * (itemH + gap) - scrollOff;
+                        const owned = ownedPlayers.includes(p.file);
+                        const isSelected = selectedPlayer === p.file;
+                        const thumb = playerThumbs[p.file];
+                        if (thumb && thumb.complete) {
+                            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                            ctx.fillRect(ix + 2, iy + 2, itemW - 4, 50);
+                            const animFrame = Math.floor(Date.now() / 150) % 4;
+                            ctx.drawImage(thumb, animFrame * 16, 0, 16, 16, ix + (itemW - 40) / 2, iy + 8, 40, 40);
+                        } else {
+                            ctx.fillStyle = 'rgba(255,255,255,0.08)';
+                            ctx.fillRect(ix + 2, iy + 2, itemW - 4, 70);
+                        }
+                        ctx.strokeStyle = isSelected ? '#00cc00' : (owned ? 'white' : '#666');
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(ix, iy, itemW, itemH);
+                        ctx.fillStyle = 'white';
+                        ctx.font = '11px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        if (owned) {
+                            ctx.fillStyle = isSelected ? '#00cc00' : '#aaa';
+                            ctx.fillText(isSelected ? 'Вкл' : 'Выбрать', ix + itemW / 2, iy + itemH - 30);
+                        } else {
+                            ctx.fillStyle = '#FFD700';
+                            ctx.fillText(p.price + ' монет', ix + itemW / 2, iy + itemH - 30);
+                        }
+                    });
+                }
+                ctx.restore();
+                const back = { label: 'Назад', x: GAME_W / 2, y: GAME_H - 50, w: 160, h: 40 };
+                drawRectButton(back, hoveredButton === -1 ? -1 : 0);
             }
 
             requestAnimationFrame(draw);
         }
 
+        let spacePressed = false;
         document.addEventListener('keydown', (e) => {
-            if (e.code === 'Space') {
+            if (e.code === 'Space' && !spacePressed) {
+                spacePressed = true;
                 e.preventDefault();
                 jump();
             }
+            if (e.code === 'Escape') {
+                gameState = 'menu';
+            }
+            if (e.code === 'KeyP' && gameState === 'menu') {
+                showCheats = !showCheats;
+            }
         });
-        canvas.addEventListener('click', jump);
+        document.addEventListener('keyup', (e) => {
+            if (e.code === 'Space') spacePressed = false;
+        });
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mx = (e.clientX - rect.left) * scaleX;
+            const my = (e.clientY - rect.top) * scaleY;
+            if (gameState === 'menu') {
+                for (const b of buttons) {
+                    if (hitTestRect(b, mx, my)) {
+                        playButtonClick();
+                        if (b.label === 'Играть') { gameState = 'playing'; reset(); }
+                        else if (b.label === 'Магазин') { gameState = 'shop'; }
+                        else if (b.label === 'Настройки') { gameState = 'settings'; }
+                        return;
+                    }
+                }
+                if (showCheats) {
+                    if (mx >= GAME_W - 200 && mx <= GAME_W - 10 && my >= GAME_H - 135 && my <= GAME_H - 100) {
+                        playButtonClick();
+                        totalCoins += 999;
+                        localStorage.setItem('totalCoins', totalCoins);
+                        showCheats = false;
+                        return;
+                    }
+                    if (mx >= GAME_W - 200 && mx <= GAME_W - 10 && my >= GAME_H - 100 && my <= GAME_H - 65) {
+                        playButtonClick();
+                        totalCoins = 0;
+                        localStorage.setItem('totalCoins', totalCoins);
+                        showCheats = false;
+                        return;
+                    }
+                    if (mx >= GAME_W - 200 && mx <= GAME_W - 10 && my >= GAME_H - 65 && my <= GAME_H - 30) {
+                        playButtonClick();
+                        resetShop();
+                        showCheats = false;
+                        return;
+                    }
+                }
+                return;
+            }
+            if (gameState === 'gameover') {
+                const restartBtn = { label: 'Рестарт', x: GAME_W / 2 - 90, y: GAME_H / 2 + 85, w: 140, h: 40 };
+                const menuBtn = { label: 'Назад', x: GAME_W / 2 + 90, y: GAME_H / 2 + 85, w: 140, h: 40 };
+                if (hitTestRect(restartBtn, mx, my)) {
+                    gameState = 'playing';
+                    reset();
+                    return;
+                }
+                if (hitTestRect(menuBtn, mx, my)) {
+                    gameState = 'menu';
+                    return;
+                }
+                return;
+            }
+            if (gameState === 'settings') {
+                const back = { label: 'Назад', x: GAME_W / 2, y: 340, w: 200, h: 50 };
+                if (hitTestRect(back, mx, my)) { playButtonClick(); gameState = 'menu'; return; }
+                if (hitTestSlider(mx, my, 160)) { playButtonClick(); sfxVolume = sliderValueFromX(mx); return; }
+                if (hitTestSlider(mx, my, 240)) { unlockAudio(); musicVolume = sliderValueFromX(mx); if (bgMusic.paused) { bgMusic.play().catch(() => {}); } bgMusic.volume = musicVolume; return; }
+                return;
+            }
+            if (gameState === 'shop') {
+                const catX = 60, catW = 110, catH = 40, catGap = 10;
+                const catStartY = 80;
+                shopCategories.forEach((cat, i) => {
+                    const cy = catStartY + i * (catH + catGap);
+                    if (mx >= catX && mx <= catX + catW && my >= cy && my <= cy + catH) {
+                        playButtonClick();
+                        shopCategory = cat.key;
+                        shopScroll = 0;
+                    }
+                });
+                if (shopCategory === 'background') {
+                    const startX = 210, startY = 95, itemW = 130, itemH = 85, gap = 10, cols = 3;
+                    const panelTop = 83, panelBottom = panelTop + GAME_H - 186;
+                    bgList.forEach((bg, i) => {
+                        const col = i % cols;
+                        const row = Math.floor(i / cols);
+                        const ix = startX + col * (itemW + gap);
+                        const iy = startY + row * (itemH + gap) - shopScroll;
+                        if (iy + itemH < panelTop || iy > panelBottom) return;
+                        if (mx >= ix && mx <= ix + itemW && my >= iy && my <= iy + itemH) {
+                            const owned = ownedBgs.includes(bg.file);
+                            if (owned) {
+                                playButtonClick();
+                                selectBg(bg.file);
+                            } else if (totalCoins >= bg.price) {
+                                playPurchaseSound();
+                                totalCoins -= bg.price;
+                                localStorage.setItem('totalCoins', totalCoins);
+                                ownedBgs.push(bg.file);
+                                saveOwnedBgs();
+                                selectBg(bg.file);
+                            } else {
+                                playButtonClick();
+                            }
+                        }
+                    });
+                } else if (shopCategory === 'player') {
+                    const startX = 210, startY = 95, itemW = 130, itemH = 85, gap = 10, cols = 3;
+                    const panelTop = 83, panelBottom = panelTop + GAME_H - 186;
+                    playerSkins.forEach((p, i) => {
+                        const col = i % cols;
+                        const row = Math.floor(i / cols);
+                        const ix = startX + col * (itemW + gap);
+                        const iy = startY + row * (itemH + gap) - shopScroll;
+                        if (iy + itemH < panelTop || iy > panelBottom) return;
+                        if (mx >= ix && mx <= ix + itemW && my >= iy && my <= iy + itemH) {
+                            const owned = ownedPlayers.includes(p.file);
+                            if (owned) {
+                                playButtonClick();
+                                selectPlayer(p.file);
+                            } else if (totalCoins >= p.price) {
+                                playPurchaseSound();
+                                totalCoins -= p.price;
+                                localStorage.setItem('totalCoins', totalCoins);
+                                ownedPlayers.push(p.file);
+                                saveOwnedPlayers();
+                                selectPlayer(p.file);
+                            } else {
+                                playButtonClick();
+                            }
+                        }
+                    });
+                }
+                const back = { label: 'Назад', x: GAME_W / 2, y: GAME_H - 50, w: 160, h: 40 };
+                if (hitTestRect(back, mx, my)) { playButtonClick(); gameState = 'menu'; }
+                return;
+            }
+            jump();
+        });
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const mx = (e.clientX - rect.left) * scaleX;
+            const my = (e.clientY - rect.top) * scaleY;
+            hoveredButton = -1;
+            if (gameState === 'menu') {
+                for (let i = 0; i < buttons.length; i++) {
+                    if (hitTestRect(buttons[i], mx, my)) { hoveredButton = i; break; }
+                }
+            }
+            if (gameState === 'settings') {
+                const back = { label: 'Назад', x: GAME_W / 2, y: 340, w: 200, h: 50 };
+                if (hitTestRect(back, mx, my)) hoveredButton = 0;
+            }
+            if (gameState === 'gameover') {
+                const restartBtn = { label: 'Рестарт', x: GAME_W / 2 - 90, y: GAME_H / 2 + 85, w: 140, h: 40 };
+                const menuBtn = { label: 'Назад', x: GAME_W / 2 + 90, y: GAME_H / 2 + 85, w: 140, h: 40 };
+                if (hitTestRect(restartBtn, mx, my)) hoveredButton = 10;
+                else if (hitTestRect(menuBtn, mx, my)) hoveredButton = 11;
+            }
+            if (gameState === 'shop') {
+                const back = { label: 'Назад', x: GAME_W / 2, y: GAME_H - 50, w: 160, h: 40 };
+                if (hitTestRect(back, mx, my)) hoveredButton = 0;
+            }
+        });
+
+        canvas.addEventListener('wheel', (e) => {
+            if (gameState !== 'shop') return;
+            e.preventDefault();
+            if (shopCategory !== 'player') return;
+            const totalRows = Math.ceil(playerSkins.length / 3);
+            const contentH = totalRows * (85 + 10) - 10;
+            const panelTop = 83;
+            const totalH = (95 - panelTop) + contentH;
+            const panelH = GAME_H - 186;
+            if (totalH <= panelH) return;
+            shopScroll += e.deltaY > 0 ? 20 : -20;
+            shopScroll = Math.max(0, Math.min(shopScroll, totalH - panelH));
+        });
 
         window.addEventListener('resize', resize);
         resize();
         draw();
+    }
     </script>
 </body>
 </html>

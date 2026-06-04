@@ -556,8 +556,10 @@
             }
 
             // background scroll
-            bgOffset = (bgOffset + PIPE_SPEED * speedMult * 0.5) % (gameBg.width || 256);
-            groundOffset = (groundOffset + PIPE_SPEED * speedMult) % 280;
+            if (gameState === 'playing') {
+                bgOffset = (bgOffset + PIPE_SPEED * speedMult * 0.5) % (gameBg.width || 256);
+                groundOffset = (groundOffset + PIPE_SPEED * speedMult) % 280;
+            }
 
             // pipes
             for (const p of pipes) {

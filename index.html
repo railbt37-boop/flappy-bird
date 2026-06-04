@@ -556,10 +556,8 @@
             }
 
             // background scroll
-            if (gameState === 'playing' || gameState === 'gameover') {
-                bgOffset = (bgOffset + PIPE_SPEED * speedMult * 0.5) % (gameBg.width || 256);
-                groundOffset = (groundOffset + PIPE_SPEED * speedMult) % 280;
-            }
+            bgOffset = (bgOffset + PIPE_SPEED * speedMult * 0.5) % (gameBg.width || 256);
+            groundOffset = (groundOffset + PIPE_SPEED * speedMult) % 280;
 
             // pipes
             for (const p of pipes) {
@@ -598,9 +596,8 @@
             ctx.font = 'bold 26px Arial';
             drawCoinSprite(GAME_W - 28, 28, 24);
             ctx.fillText(totalCoins, GAME_W - 50, 36);
-            ctx.font = '12px Arial';
-            ctx.fillText(pipesPassed, GAME_W - 10, 56);
-            ctx.fillText((PIPE_SPEED * speedMult).toFixed(1), GAME_W - 10, 70);
+            ctx.font = 'bold 22px Arial';
+            ctx.fillText(pipesPassed, GAME_W - 10, 62);
 
             // player
             if (gameState === 'playing' || gameState === 'gameover') {

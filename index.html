@@ -71,11 +71,7 @@
                     'Всплывающие окна заблокированы. Вставьте адрес вручную: ' + GAME_URL;
             }
         }
-        if (location.protocol === 'file:') {
-            document.getElementById('gameCanvas').style.display = 'none';
-            document.getElementById('fileGate').style.display = 'flex';
-            document.getElementById('openGameBtn').onclick = openGameInBrowser;
-        } else if (inIframe) {
+        if (inIframe) {
             document.getElementById('gameCanvas').style.display = 'none';
             document.getElementById('fileGate').style.display = 'flex';
             document.querySelector('#fileGate h1').textContent = 'Не открывайте игру во встроенном превью';
